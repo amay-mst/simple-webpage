@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Storj File Uploader</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 50px; }
+    input, button { margin: 10px 0; padding: 8px 12px; }
+    button { cursor: pointer; }
+    a { color: blue; text-decoration: underline; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Storj File Uploader</h1>
+
+  <input type="file" id="fileInput" />
+  <button onclick="uploadFile()">Upload</button>
+  <p id="status"></p>
+
+  <button onclick="getDownloadLink()">Get Download Link</button>
+  <a id="downloadLink" href="#" target="_blank"></a>
+
+  <script>
+    let selectedFile = null;
+
+    document.getElementById("fileInput").addEventListener("change", (e) => {
+      selectedFile = e.target.files[0];
+    });
+
+    async function uploadFile() {
+      if (!selectedFile) return alert("Select a file first!");
+
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result.split(",")[1];
+
+        try {
+          const res = await fetch("YOUR_LAMBDA_URL/api/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              filename: selectedFile.name,
+              contentType: selectedFile.type,
+              file: base64
+            }),
+          });
+
+          const data = await res.json();
+          document.getElementById("status").innerText = data.message;
+        } catch (err) {
+          console.error(err);
+          document.getElementById("status").innerText = "Upload failed!";
+        }
+      };
+      reader.readAsDataURL(selectedFile);
+    }
+
+    async function getDownloadLink() {
+      if (!selectedFile) return alert("Select a file first!");
+
+      try {
+        const res = await fetch(`YOUR_LAMBDA_URL/api/file?filename=${selectedFile.name}`);
+        const data = await res.json();
+        const link = document.getElementById("downloadLink");
+        link.href = data.url;
+        link.innerText = "Download File";
+      } catch (err) {
+        console.error(err);
+        alert("Failed to get download link");
+      }
+    }
+  </script>
+</body>
+</html>
