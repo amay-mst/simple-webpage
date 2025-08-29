@@ -1,73 +1,195 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Storj File Uploader</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Storj File Uploader - POST /file & GET /file</title>
   <style>
-    body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 50px; }
-    input, button { margin: 10px 0; padding: 8px 12px; }
-    button { cursor: pointer; }
-    a { color: blue; text-decoration: underline; margin-top: 10px; }
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px;
+      gap: 10px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .controls { display: flex; gap: 8px; align-items:center; flex-wrap:wrap; }
+    input[type="file"] { padding:6px; }
+    input[type="text"] { padding:6px; width:300px; }
+    button { padding: 8px 12px; cursor: pointer; }
+    .status { min-height: 22px; margin-top: 6px; color: #111; }
+    pre { width:100%; max-height:260px; overflow:auto; background:#f5f5f5; padding:10px; border-radius:6px; }
+    a { color: #0366d6; text-decoration: none; }
   </style>
 </head>
 <body>
-  <h1>Storj File Uploader</h1>
+  <h1>Storj File Uploader (POST /file & GET /file)</h1>
 
-  <input type="file" id="fileInput" />
-  <button onclick="uploadFile()">Upload</button>
-  <p id="status"></p>
+  <div class="controls">
+    <input id="fileInput" type="file" />
+    <button id="uploadBtn">Upload (POST /file)</button>
+  </div>
 
-  <button onclick="getDownloadLink()">Get Download Link</button>
-  <a id="downloadLink" href="#" target="_blank"></a>
+  <div class="controls">
+    <!-- allow manual filename lookup in case user wants to query a file without re-selecting -->
+    <input id="filenameInput" type="text" placeholder="Filename to fetch (or leave blank to use selected file)" />
+    <button id="getLinkBtn">Get Download Link (GET /file)</button>
+  </div>
+
+  <p class="status" id="status">Status: idle</p>
+
+  <a id="downloadLink" href="#" target="_blank" style="display:none;">Download File</a>
+
+  <h3>Raw response</h3>
+  <pre id="rawResponse">—</pre>
 
   <script>
-    let selectedFile = null;
+    // Replace base URL if it changes
+    const API_BASE = "https://wyqcv7t8bg.execute-api.ap-south-2.amazonaws.com";
+    const POST_PATH = "/file"; // POST -> API_BASE + POST_PATH
+    const GET_PATH  = "/file"; // GET  -> API_BASE + GET_PATH?filename=...
 
-    document.getElementById("fileInput").addEventListener("change", (e) => {
-      selectedFile = e.target.files[0];
+    const fileInput = document.getElementById("fileInput");
+    const filenameInput = document.getElementById("filenameInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const getLinkBtn = document.getElementById("getLinkBtn");
+    const statusEl = document.getElementById("status");
+    const rawEl = document.getElementById("rawResponse");
+    const downloadLinkEl = document.getElementById("downloadLink");
+
+    let selectedFile = null;
+    fileInput.addEventListener("change", (e) => {
+      selectedFile = e.target.files[0] || null;
+      // pre-fill filename field for easy GET
+      if (selectedFile) filenameInput.value = selectedFile.name;
     });
 
-    async function uploadFile() {
-      if (!selectedFile) return alert("Select a file first!");
+    uploadBtn.addEventListener("click", uploadFile);
+    getLinkBtn.addEventListener("click", getDownloadLink);
 
+    // Helper to update UI
+    function setStatus(text, isError = false) {
+      statusEl.textContent = "Status: " + text;
+      statusEl.style.color = isError ? "crimson" : "#111";
+    }
+
+    async function uploadFile() {
+      if (!selectedFile) {
+        alert("Select a file first!");
+        return;
+      }
+
+      setStatus("Reading file...");
+      downloadLinkEl.style.display = "none";
+
+      // Read file as base64 (Data URL)
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const base64 = reader.result.split(",")[1];
-
         try {
-          const res = await fetch("https://wyqcv7t8bg.execute-api.ap-south-2.amazonaws.com/file/upload", {
+          const dataUrl = reader.result;
+          const base64 = dataUrl.split(",")[1]; // remove data:<type>;base64, prefix
+
+          setStatus("Uploading...");
+          const res = await fetch(API_BASE + POST_PATH, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json"
+            },
             body: JSON.stringify({
               filename: selectedFile.name,
-              contentType: selectedFile.type,
+              contentType: selectedFile.type || "application/octet-stream",
               file: base64
             }),
           });
 
-          const data = await res.json();
-          document.getElementById("status").innerText = data.message;
+          const json = await tryParseJson(res);
+          rawEl.textContent = JSON.stringify(json, null, 2);
+
+          if (!res.ok) {
+            setStatus(`Upload failed (${res.status})`, true);
+            return;
+          }
+
+          setStatus(json.message || "Upload successful!");
+          // If backend returns a direct url or signedUrl field — try common keys
+          const url = json.url || json.signedUrl || json.downloadUrl || json.fileUrl;
+          if (url) {
+            downloadLinkEl.href = url;
+            downloadLinkEl.textContent = "Download File";
+            downloadLinkEl.style.display = "inline-block";
+          } else {
+            downloadLinkEl.style.display = "none";
+            // optionally inform user to use GET /file
+            setStatus((json.message || "Upload successful!") + " (no URL returned — use GET /file to fetch link)");
+          }
         } catch (err) {
           console.error(err);
-          document.getElementById("status").innerText = "Upload failed!";
+          setStatus("Upload failed (see console)", true);
+          rawEl.textContent = String(err);
         }
       };
+
+      reader.onerror = () => {
+        setStatus("Failed to read file", true);
+      };
+
       reader.readAsDataURL(selectedFile);
     }
 
     async function getDownloadLink() {
-      if (!selectedFile) return alert("Select a file first!");
+      // use filename input if present, otherwise try selected file
+      const nameFromInput = (filenameInput.value || "").trim();
+      const filename = nameFromInput || (selectedFile ? selectedFile.name : "");
+
+      if (!filename) {
+        alert("Please enter a filename or select a file first.");
+        return;
+      }
+
+      setStatus("Requesting download link...");
+      downloadLinkEl.style.display = "none";
 
       try {
-        const res = await fetch(`https://wyqcv7t8bg.execute-api.ap-south-2.amazonaws.com/file?filename=${selectedFile.name}`);
-        const data = await res.json();
-        const link = document.getElementById("downloadLink");
-        link.href = data.url;
-        link.innerText = "Download File";
+        const q = new URLSearchParams({ filename });
+        const res = await fetch(API_BASE + GET_PATH + "?" + q.toString(), {
+          method: "GET",
+          headers: { "Accept": "application/json" }
+        });
+
+        const json = await tryParseJson(res);
+        rawEl.textContent = JSON.stringify(json, null, 2);
+
+        if (!res.ok) {
+          setStatus(`Failed to fetch link (${res.status})`, true);
+          return;
+        }
+
+        // Expect backend to return url, signedUrl or similar
+        const url = json.url || json.signedUrl || json.downloadUrl || json.fileUrl;
+        if (url) {
+          downloadLinkEl.href = url;
+          downloadLinkEl.textContent = "Download File";
+          downloadLinkEl.style.display = "inline-block";
+          setStatus("Download link ready");
+        } else {
+          setStatus("No URL returned from API", true);
+        }
       } catch (err) {
         console.error(err);
-        alert("Failed to get download link");
+        setStatus("Failed to fetch link (see console)", true);
+        rawEl.textContent = String(err);
+      }
+    }
+
+    // helper to parse JSON safely
+    async function tryParseJson(response) {
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { rawText: text, status: response.status };
       }
     }
   </script>
