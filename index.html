@@ -36,7 +36,7 @@
         const base64 = reader.result.split(",")[1];
 
         try {
-          const res = await fetch("YOUR_LAMBDA_URL/api/upload", {
+          const res = await fetch("https://wyqcv7t8bg.execute-api.ap-south-2.amazonaws.com/file/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -60,7 +60,7 @@
       if (!selectedFile) return alert("Select a file first!");
 
       try {
-        const res = await fetch(`YOUR_LAMBDA_URL/api/file?filename=${selectedFile.name}`);
+        const res = await fetch(`https://wyqcv7t8bg.execute-api.ap-south-2.amazonaws.com/file?filename=${selectedFile.name}`);
         const data = await res.json();
         const link = document.getElementById("downloadLink");
         link.href = data.url;
