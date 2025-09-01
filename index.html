@@ -7,20 +7,21 @@
     body { font-family: Arial, sans-serif; padding: 20px; }
     #status { margin-top: 10px; font-weight: bold; }
     #status.error { color: red; }
+    #status.success { color: green; }
     pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
     a { display: block; margin-top: 5px; }
+    .loading { color: blue; }
   </style>
 </head>
 <body>
   <h2>Storj Upload & Download Test</h2>
-
   <input type="file" id="fileInput" />
   <button onclick="uploadFile()">Upload</button>
   <button onclick="getDownloadLink()">Get Download Link</button>
   <button onclick="listFiles()">List All Files</button>
-
   <div id="status"></div>
   <a id="downloadLink" href="#" target="_blank" style="display:none">Download File</a>
+  
   <h3>Stored Files:</h3>
   <div id="fileList"></div>
   <pre id="raw"></pre>
@@ -32,16 +33,26 @@
     const downloadLinkEl = document.getElementById("downloadLink");
     const fileInput = document.getElementById("fileInput");
     const fileListEl = document.getElementById("fileList");
-
     let selectedFile = null;
 
     fileInput.addEventListener("change", (e) => {
       selectedFile = e.target.files[0];
+      if (selectedFile) {
+        setStatus(`Selected: ${selectedFile.name} (${formatFileSize(selectedFile.size)})`);
+      }
     });
 
-    function setStatus(msg, isError = false) {
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function setStatus(msg, type = "info") {
       statusEl.textContent = msg;
-      statusEl.className = isError ? "error" : "";
+      statusEl.className = type; // "error", "success", "loading", or ""
     }
 
     async function uploadFile() {
@@ -50,8 +61,9 @@
         return;
       }
 
-      setStatus("Uploading file...");
+      setStatus(`Uploading ${selectedFile.name}...`, "loading");
       downloadLinkEl.style.display = "none";
+      rawEl.textContent = "";
 
       try {
         const formData = new FormData();
@@ -62,19 +74,32 @@
           body: formData,
         });
 
+        // Handle non-JSON responses (HTML error pages)
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const textResponse = await res.text();
+          rawEl.textContent = textResponse;
+          setStatus(`Server returned non-JSON response (${res.status})`, "error");
+          return;
+        }
+
         const json = await res.json();
         rawEl.textContent = JSON.stringify(json, null, 2);
 
         if (!res.ok) {
-          setStatus(`Upload failed (${res.status})`, true);
+          setStatus(`Upload failed: ${json.details || json.error} (${res.status})`, "error");
           return;
         }
 
-        setStatus("Upload successful!");
+        setStatus(`✅ Upload successful! File: ${json.fileName}`, "success");
+        
+        // Auto-refresh file list after successful upload
+        setTimeout(listFiles, 1000);
+        
       } catch (err) {
-        console.error(err);
-        setStatus("Upload failed (see console)", true);
-        rawEl.textContent = String(err);
+        console.error('Upload error:', err);
+        setStatus(`Upload failed: ${err.message}`, "error");
+        rawEl.textContent = `Error: ${err.message}\nStack: ${err.stack}`;
       }
     }
 
@@ -84,69 +109,96 @@
         return;
       }
 
-      setStatus("Requesting download URL...");
+      setStatus("Requesting download URL...", "loading");
       downloadLinkEl.style.display = "none";
 
       try {
-        const res = await fetch(API_BASE + "?action=download&filename=" + encodeURIComponent(selectedFile.name));
+        const res = await fetch(
+          `${API_BASE}?action=download&filename=${encodeURIComponent(selectedFile.name)}`
+        );
+
         const json = await res.json();
         rawEl.textContent = JSON.stringify(json, null, 2);
 
         if (!res.ok) {
-          setStatus(`Failed to get download URL (${res.status})`, true);
+          setStatus(`Failed to get download URL: ${json.details || json.error} (${res.status})`, "error");
           return;
         }
 
         const downloadUrl = json.downloadUrl;
         if (!downloadUrl) {
-          setStatus("No downloadUrl returned", true);
+          setStatus("No downloadUrl returned", "error");
           return;
         }
 
-        setStatus("Download URL ready!");
+        setStatus("✅ Download URL ready!", "success");
         downloadLinkEl.href = downloadUrl;
-        downloadLinkEl.textContent = "Download File";
+        downloadLinkEl.textContent = `Download ${selectedFile.name}`;
         downloadLinkEl.style.display = "inline-block";
+        
       } catch (err) {
-        console.error(err);
-        setStatus("Download failed (see console)", true);
+        console.error('Download error:', err);
+        setStatus(`Download failed: ${err.message}`, "error");
         rawEl.textContent = String(err);
       }
     }
 
     async function listFiles() {
-      setStatus("Fetching file list...");
+      setStatus("Fetching file list...", "loading");
       fileListEl.innerHTML = "";
 
       try {
-        const res = await fetch(API_BASE + "?action=list");
+        const res = await fetch(`${API_BASE}?action=list`);
         const json = await res.json();
         rawEl.textContent = JSON.stringify(json, null, 2);
 
         if (!res.ok) {
-          setStatus(`Failed to fetch file list (${res.status})`, true);
+          setStatus(`Failed to fetch file list: ${json.details || json.error} (${res.status})`, "error");
           return;
         }
 
         if (!json.files || json.files.length === 0) {
-          setStatus("No files found.");
+          setStatus("No files found in bucket.", "info");
           return;
         }
 
-        setStatus("Files loaded:");
+        setStatus(`✅ Found ${json.files.length} files:`, "success");
+        
         json.files.forEach(file => {
+          const fileDiv = document.createElement("div");
+          fileDiv.style.marginBottom = "5px";
+          
           const link = document.createElement("a");
           link.href = file.url;
           link.textContent = file.name;
           link.target = "_blank";
-          fileListEl.appendChild(link);
+          link.style.marginRight = "10px";
+          
+          const clickToSelect = document.createElement("button");
+          clickToSelect.textContent = "Select";
+          clickToSelect.style.marginLeft = "10px";
+          clickToSelect.onclick = () => {
+            // Create a mock file object for download functionality
+            selectedFile = { name: file.name };
+            setStatus(`Selected for download: ${file.name}`, "info");
+          };
+          
+          fileDiv.appendChild(link);
+          fileDiv.appendChild(clickToSelect);
+          fileListEl.appendChild(fileDiv);
         });
+        
       } catch (err) {
-        console.error(err);
-        setStatus("Listing failed (see console)", true);
+        console.error('List error:', err);
+        setStatus(`Listing failed: ${err.message}`, "error");
         rawEl.textContent = String(err);
       }
     }
+
+    // Auto-load file list on page load
+    window.onload = function() {
+      listFiles();
+    };
   </script>
 </body>
 </html>
