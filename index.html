@@ -9,7 +9,24 @@
     #status.error { color: red; }
     #status.success { color: green; }
     pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
-    a { display: block; margin-top: 5px; }
+    .file-item { 
+      display: flex; 
+      align-items: center; 
+      margin-bottom: 8px; 
+      padding: 8px; 
+      border: 1px solid #ddd; 
+      border-radius: 4px; 
+    }
+    .file-name { 
+      flex-grow: 1; 
+      margin-right: 10px; 
+      font-weight: 500;
+    }
+    button { 
+      margin-left: 5px; 
+      padding: 5px 10px; 
+      cursor: pointer; 
+    }
     .loading { color: blue; }
   </style>
 </head>
@@ -19,6 +36,7 @@
   <button onclick="uploadFile()">Upload</button>
   <button onclick="getDownloadLink()">Get Download Link</button>
   <button onclick="listFiles()">List All Files</button>
+  
   <div id="status"></div>
   <a id="downloadLink" href="#" target="_blank" style="display:none">Download File</a>
   
@@ -52,7 +70,7 @@
 
     function setStatus(msg, type = "info") {
       statusEl.textContent = msg;
-      statusEl.className = type; // "error", "success", "loading", or ""
+      statusEl.className = type;
     }
 
     async function uploadFile() {
@@ -74,7 +92,6 @@
           body: formData,
         });
 
-        // Handle non-JSON responses (HTML error pages)
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
           const textResponse = await res.text();
@@ -92,20 +109,18 @@
         }
 
         setStatus(`✅ Upload successful! File: ${json.fileName}`, "success");
-        
-        // Auto-refresh file list after successful upload
         setTimeout(listFiles, 1000);
         
       } catch (err) {
         console.error('Upload error:', err);
         setStatus(`Upload failed: ${err.message}`, "error");
-        rawEl.textContent = `Error: ${err.message}\nStack: ${err.stack}`;
+        rawEl.textContent = `Error: ${err.message}`;
       }
     }
 
     async function getDownloadLink() {
       if (!selectedFile) {
-        alert("Upload a file first (need filename)!");
+        alert("Upload a file first or select a file from the list!");
         return;
       }
 
@@ -143,6 +158,36 @@
       }
     }
 
+    // ✅ NEW: Direct download function for file list
+    async function downloadFile(fileName) {
+      setStatus(`Downloading ${fileName}...`, "loading");
+      
+      try {
+        const res = await fetch(
+          `${API_BASE}?action=download&filename=${encodeURIComponent(fileName)}`
+        );
+
+        const json = await res.json();
+
+        if (!res.ok) {
+          setStatus(`Download failed: ${json.details || json.error}`, "error");
+          return;
+        }
+
+        if (json.downloadUrl) {
+          setStatus(`✅ Downloading ${fileName}`, "success");
+          // Open download in new tab
+          window.open(json.downloadUrl, '_blank');
+        } else {
+          setStatus("No download URL received", "error");
+        }
+        
+      } catch (err) {
+        console.error('Download error:', err);
+        setStatus(`Download failed: ${err.message}`, "error");
+      }
+    }
+
     async function listFiles() {
       setStatus("Fetching file list...", "loading");
       fileListEl.innerHTML = "";
@@ -164,27 +209,32 @@
 
         setStatus(`✅ Found ${json.files.length} files:`, "success");
         
+        // ✅ UPDATED: New file list display with proper download buttons
         json.files.forEach(file => {
           const fileDiv = document.createElement("div");
-          fileDiv.style.marginBottom = "5px";
+          fileDiv.className = "file-item";
           
-          const link = document.createElement("a");
-          link.href = file.url;
-          link.textContent = file.name;
-          link.target = "_blank";
-          link.style.marginRight = "10px";
+          const fileName = document.createElement("span");
+          fileName.className = "file-name";
+          fileName.textContent = file.name;
           
-          const clickToSelect = document.createElement("button");
-          clickToSelect.textContent = "Select";
-          clickToSelect.style.marginLeft = "10px";
-          clickToSelect.onclick = () => {
-            // Create a mock file object for download functionality
+          const selectBtn = document.createElement("button");
+          selectBtn.textContent = "Select";
+          selectBtn.onclick = () => {
             selectedFile = { name: file.name };
             setStatus(`Selected for download: ${file.name}`, "info");
           };
           
-          fileDiv.appendChild(link);
-          fileDiv.appendChild(clickToSelect);
+          // ✅ NEW: Direct download button
+          const downloadBtn = document.createElement("button");
+          downloadBtn.textContent = "Download";
+          downloadBtn.style.backgroundColor = "#007bff";
+          downloadBtn.style.color = "white";
+          downloadBtn.onclick = () => downloadFile(file.name);
+          
+          fileDiv.appendChild(fileName);
+          fileDiv.appendChild(selectBtn);
+          fileDiv.appendChild(downloadBtn);
           fileListEl.appendChild(fileDiv);
         });
         
