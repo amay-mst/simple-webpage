@@ -44,6 +44,7 @@
       statusEl.className = isError ? "error" : "";
     }
 
+    // ✅ Updated Upload with FormData
     async function uploadFile() {
       if (!selectedFile) {
         alert("Select a file first!");
@@ -59,7 +60,7 @@
 
         const res = await fetch(API_BASE, {
           method: "POST",
-          body: formData,
+          body: formData, // 👈 sending raw FormData
         });
 
         const json = await res.json();
@@ -89,7 +90,6 @@
 
       try {
         const res = await fetch(API_BASE + "?action=download&filename=" + encodeURIComponent(selectedFile.name));
-
         const json = await res.json();
         rawEl.textContent = JSON.stringify(json, null, 2);
 
@@ -137,8 +137,8 @@
         setStatus("Files loaded:");
         json.files.forEach(file => {
           const link = document.createElement("a");
-          link.href = file.url;
-          link.textContent = file.name;
+          link.href = file.url || "#";
+          link.textContent = file.name || file;
           link.target = "_blank";
           fileListEl.appendChild(link);
         });
@@ -151,4 +151,3 @@
   </script>
 </body>
 </html>
-
