@@ -15,8 +15,8 @@ const client = new S3Client({
   endpoint: "https://gateway.storjshare.io",
   region: "us-east-1", // dummy, required by SDK
   credentials: {
-    accessKeyId: process.env.STORJ_ACCESS_KEY,
-    secretAccessKey: process.env.STORJ_SECRET_KEY,
+    accessKeyId: process.env.STORJ_KEY,
+    secretAccessKey: process.env.STORJ_SECRET,
   },
 });
 
