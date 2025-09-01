@@ -86,16 +86,22 @@ export default async function handler(req, res) {
         });
 
         try {
-          console.log('Creating file stream...');
-          const fileStream = fs.createReadStream(file.filepath);
           const fileName = file.originalFilename || file.name;
+          const filePath = file.filepath;
           
-          console.log('Sending to S3...');
+          // ✅ FIX: Get file stats and add ContentLength
+          const fileStats = fs.statSync(filePath);
+          const fileStream = fs.createReadStream(filePath);
+          
+          console.log('Sending to S3 with ContentLength:', fileStats.size);
+          
           const uploadResult = await client.send(
             new PutObjectCommand({
               Bucket: process.env.STORJ_BUCKET,
               Key: fileName,
               Body: fileStream,
+              ContentLength: fileStats.size,  // ✅ This fixes the Content-Length error
+              ContentType: file.mimetype || 'application/octet-stream',
             })
           );
           
@@ -104,6 +110,7 @@ export default async function handler(req, res) {
           return res.status(200).json({
             message: "Upload successful",
             fileName: fileName,
+            size: fileStats.size
           });
         } catch (uploadErr) {
           console.error('Upload error details:', {
