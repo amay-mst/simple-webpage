@@ -96,7 +96,7 @@ export default async function handler(req, res) {
           );
           const files = result.Contents?.map((f) => ({
             name: f.Key,
-            url: `https://gateway.storjshare.io/my-app-files/${f.Key}`,
+          
           })) || [];
           return res.status(200).json({ files });
         } catch (listErr) {
