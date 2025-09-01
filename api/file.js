@@ -1,16 +1,18 @@
 import formidable from "formidable";
 import fs from "fs";
-import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 
+// Disable Next.js body parser (we’re using formidable instead)
 export const config = {
   api: {
-    bodyParser: false, // disable default body parser for file upload
+    bodyParser: false,
   },
 };
 
+// Storj S3 Client
 const client = new S3Client({
   endpoint: "https://gateway.storjshare.io",
-  region: "us-east-1",
+  region: "us-east-1", // required, can be anything
   credentials: {
     accessKeyId: process.env.STORJ_ACCESS_KEY,
     secretAccessKey: process.env.STORJ_SECRET_KEY,
@@ -19,6 +21,7 @@ const client = new S3Client({
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
+    // Handle file upload
     const form = formidable({ multiples: false });
 
     form.parse(req, async (err, fields, files) => {
@@ -26,10 +29,14 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "File parsing failed", details: err.message });
       }
 
-      const file = files.file; // name="file" from input
-      const fileStream = fs.createReadStream(file.filepath);
+      const file = files.file; // must match <input type="file" name="file" />
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
 
       try {
+        const fileStream = fs.createReadStream(file.filepath);
+
         await client.send(
           new PutObjectCommand({
             Bucket: process.env.STORJ_BUCKET,
@@ -37,18 +44,34 @@ export default async function handler(req, res) {
             Body: fileStream,
           })
         );
-        res.status(200).json({ message: "Upload successful", fileName: file.originalFilename });
+
+        return res.status(200).json({
+          message: "Upload successful",
+          fileName: file.originalFilename,
+        });
       } catch (uploadErr) {
-        res.status(500).json({ error: "Upload failed", details: uploadErr.message });
+        return res.status(500).json({
+          error: "Upload failed",
+          details: uploadErr.message,
+        });
       }
     });
   } else if (req.method === "GET") {
+    // Handle listing files
     try {
-      const result = await client.send(new ListObjectsV2Command({ Bucket: process.env.STORJ_BUCKET }));
+      const result = await client.send(
+        new ListObjectsV2Command({ Bucket: process.env.STORJ_BUCKET })
+      );
+
       const files = result.Contents?.map((f) => f.Key) || [];
-      res.status(200).json({ files });
+      return res.status(200).json({ files });
     } catch (listErr) {
-      res.status(500).json({ error: "List failed", details: listErr.message });
+      return res.status(500).json({
+        error: "List failed",
+        details: listErr.message,
+      });
     }
   } else {
-    res
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+}
