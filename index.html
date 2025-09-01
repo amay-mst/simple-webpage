@@ -26,7 +26,7 @@
   <pre id="raw"></pre>
 
   <script>
-    const API_BASE = "/api/file"; // your Vercel route
+    const API_BASE = "/api/file"; 
     const statusEl = document.getElementById("status");
     const rawEl = document.getElementById("raw");
     const downloadLinkEl = document.getElementById("downloadLink");
@@ -44,7 +44,6 @@
       statusEl.className = isError ? "error" : "";
     }
 
-    // ✅ Updated Upload with FormData
     async function uploadFile() {
       if (!selectedFile) {
         alert("Select a file first!");
@@ -60,7 +59,7 @@
 
         const res = await fetch(API_BASE, {
           method: "POST",
-          body: formData, // 👈 sending raw FormData
+          body: formData,
         });
 
         const json = await res.json();
@@ -137,8 +136,8 @@
         setStatus("Files loaded:");
         json.files.forEach(file => {
           const link = document.createElement("a");
-          link.href = file.url || "#";
-          link.textContent = file.name || file;
+          link.href = file.url;
+          link.textContent = file.name;
           link.target = "_blank";
           fileListEl.appendChild(link);
         });
